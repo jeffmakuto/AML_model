@@ -31,6 +31,7 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
@@ -48,9 +49,9 @@ cells.append({
     "cell_type": "markdown",
     "metadata": {"language": "markdown"},
     "source": make_source(dedent("""
-## Synthetic transaction ledger for Jubilee Insurance
+## Jubilee transaction ledger (Kenya, Uganda, Tanzania)
 
-We simulate 1,200 premium payments, investment disbursements, and claim payouts touched by Jubilee Insurance to anchor the modeling in a Kenyan context.
+The dataset at `../data/jubilee_transactions.csv` contains 64k+ transactions sourced from the generated Jubilee Insurance ledger covering Kenya, Uganda, and Tanzania, with multiple interactions per customer.
 """))
 })
 
@@ -58,55 +59,10 @@ cells.append({
     "cell_type": "code",
     "metadata": {"language": "python"},
     "source": make_source(dedent("""
-np.random.seed(42)
-n_samples = 1200
-transaction_types = ["premium_payment", "claim_payout", "investment", "savings_deposit", "reinsurance"]
-channels = ["branch", "mobile_app", "agency", "third_party"]
-policy_types = ["life", "health", "motor", "property", "savings"]
-region_choices = ["Nairobi Metro", "Coastal", "Rift Valley", "Western", "Mount Kenya", "North Eastern"]
-account_age = np.random.randint(30, 5000, size=n_samples)
-
-country_risk_map = {
-    "Kenya": "Low",
-    "Uganda": "Medium",
-    "Tanzania": "Medium",
-    "Rwanda": "Low",
-    "Somalia": "High",
-    "South Sudan": "High",
-    "DRC": "High"
-}
-country_probs = [0.45, 0.15, 0.12, 0.08, 0.08, 0.07, 0.05]
-
-amounts = np.random.exponential(scale=20000, size=n_samples) + 1500
-past_flags = np.random.poisson(0.8, size=n_samples)
-
-rate_q = np.random.uniform(0.5, 1.3, size=n_samples)
-
-friendly_df = pd.DataFrame({
-    "transaction_id": [f"JUB-{i:05d}" for i in range(1, n_samples + 1)],
-    "amount": amounts,
-    "transaction_type": np.random.choice(transaction_types, size=n_samples, p=[0.55, 0.15, 0.1, 0.15, 0.05]),
-    "channel": np.random.choice(channels, size=n_samples, p=[0.3, 0.4, 0.2, 0.1]),
-    "policy_type": np.random.choice(policy_types, size=n_samples, p=[0.3, 0.25, 0.2, 0.15, 0.1]),
-    "region": np.random.choice(region_choices, size=n_samples, p=[0.35, 0.2, 0.15, 0.15, 0.1, 0.05]),
-    "account_age_days": account_age,
-    "past_flags": past_flags,
-    "customer_rate": rate_q * 100
-})
-
-friendly_df["destination_country"] = np.random.choice(list(country_risk_map.keys()), size=n_samples, p=country_probs)
-friendly_df["destination_risk"] = friendly_df["destination_country"].map(country_risk_map)
-
-mask_suspicious = (
-    (friendly_df["amount"] > 32000)
-    | (friendly_df["transaction_type"].isin(["claim_payout", "reinsurance"]))
-    | (friendly_df["channel"] == "third_party")
-    | (friendly_df["destination_risk"] == "High")
-    | (friendly_df["past_flags"] > 1)
-)
-friendly_df["is_suspicious"] = mask_suspicious.astype(int)
-extra = np.random.choice(friendly_df.index, size=int(n_samples * 0.03), replace=False)
-friendly_df.loc[extra, "is_suspicious"] = 1
+data_path = Path("..") / "data" / "jubilee_transactions.csv"
+friendly_df = pd.read_csv(data_path, parse_dates=["transaction_date"])
+friendly_df["transaction_month"] = friendly_df["transaction_date"].dt.to_period("M").astype(str)
+friendly_df["policy_age_days"] = friendly_df["policy_age_days"].fillna(friendly_df["account_age_days"])
 friendly_df.head()
 """))
 })
@@ -115,9 +71,14 @@ cells.append({
     "cell_type": "code",
     "metadata": {"language": "python"},
     "source": make_source(dedent("""
-print("Destination risk mix (percent):")
+print(f"Total transactions: {len(friendly_df):,}")
+print(f"Unique customers: {friendly_df['customer_id'].nunique():,}")
+print("\nDestination risk mix (percent):")
 print(friendly_df["destination_risk"].value_counts(normalize=True).mul(100).round(1))
 print(f"\nLabelled suspicious share: {friendly_df['is_suspicious'].mean():.1%}")
+print(f"Median transactions per customer: {friendly_df.groupby('customer_id').size().median():.0f}\n")
+print("Top transaction types (percent):")
+print(friendly_df["transaction_type"].value_counts(normalize=True).mul(100).round(1))
 """))
 })
 
